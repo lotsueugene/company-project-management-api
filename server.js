@@ -10,30 +10,38 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(express.json());
 
-// Session middleware (TODO: Replace with JWT)
-app.use(session({
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: { 
-        secure: false,
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    }
-}));
-
-// TODO: Create JWT middleware to replace session auth
 function requireAuth(req, res, next) {
-    if (req.session && req.session.userId) {
+    // Extract token from Authorization header
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'No token provided' });
+    }
+    
+    // Get the token (remove 'Bearer ' prefix)
+    const token = authHeader.substring(7);
+    
+    try {
+        // Verify and decode the token
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        // User info is now available from the token
         req.user = {
-            id: req.session.userId,
-            name: req.session.userName,
-            email: req.session.userEmail
+            id: decoded.id,
+            username: decoded.username,
+            email: decoded.email,
+            role: decoded.role
         };
+        
         next();
-    } else {
-        res.status(401).json({ 
-            error: 'Authentication required. Please log in.' 
-        });
+    } catch (error) {
+        if (error.name === 'TokenExpiredError') {
+            return res.status(401).json({ error: 'Token expired' });
+        } else if (error.name === 'JsonWebTokenError') {
+            return res.status(401).json({ error: 'Invalid token' });
+        } else {
+            return res.status(401).json({ error: 'Token verification failed' });
+        }
     }
 }
 
@@ -103,20 +111,28 @@ app.post('/api/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid email or password' });
         }
         
-        // Create session (TODO: Replace with JWT)
-        req.session.userId = user.id;
-        req.session.userName = user.name;
-        req.session.userEmail = user.email;
-        
-        res.json({
-            message: 'Login successful',
-            user: {
-                id: user.id,
-                name: user.name,
-                email: user.email
+       // Create JWT token containing user data 
+        const token = jwt.sign( 
+            { 
+                id: user.id, 
+                username: user.username, 
+                email: user.email,
+                role: user.role
+            }, 
+            process.env.JWT_SECRET, 
+            { expiresIn: process.env.JWT_EXPIRES_IN 
+        } 
+        ); 
+
+        res.json({ 
+            message: 'Login successful', 
+            token: token, 
+            user: { 
+                id: user.id, 
+                username: user.username, 
+                email: user.email 
             }
-        });
-        
+        })    
     } catch (error) {
         console.error('Error logging in user:', error);
         res.status(500).json({ error: 'Failed to login' });
