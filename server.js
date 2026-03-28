@@ -1,5 +1,5 @@
 const express = require('express');
-const session = require('express-session');
+const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { db, User, Project, Task } = require('./database/setup');
 require('dotenv').config();
