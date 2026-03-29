@@ -43,6 +43,42 @@ function requireAuth(req, res, next) {
             return res.status(401).json({ error: 'Token verification failed' });
         }
     }
+};
+
+
+
+// Role-based middleware functions
+function requireManager(req, res, next) {
+    // Check if user is authenticated first
+    if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+    }
+    
+    // Check if user has manager or admin role
+    if (req.user.role === 'manager' || req.user.role === 'admin') {
+        next();
+    } else {
+        return res.status(403).json({ 
+            error: 'Access denied. Manager role required.' 
+        });
+    }
+};
+
+
+function requireAdmin(req, res, next) {
+    // Check if user is authenticated first
+    if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+    }
+    
+    // Check if user has admin role
+    if (req.user.role === 'admin') {
+        next();
+    } else {
+        return res.status(403).json({ 
+            error: 'Access denied. Admin role required.' 
+        });
+    }
 }
 
 // Test database connection
@@ -62,7 +98,7 @@ testConnection();
 // POST /api/register - Register new user
 app.post('/api/register', async (req, res) => {
     try {
-        const { name, email, password } = req.body;
+        const { name, email, password, role} = req.body;
         
         // Check if user exists
         const existingUser = await User.findOne({ where: { email } });
@@ -77,8 +113,8 @@ app.post('/api/register', async (req, res) => {
         const newUser = await User.create({
             name,
             email,
-            password: hashedPassword
-            // TODO: Add role field
+            password: hashedPassword,
+            role
         });
         
         res.status(201).json({
@@ -141,12 +177,7 @@ app.post('/api/login', async (req, res) => {
 
 // POST /api/logout - User logout
 app.post('/api/logout', (req, res) => {
-    req.session.destroy((err) => {
-        if (err) {
-            return res.status(500).json({ error: 'Failed to logout' });
-        }
         res.json({ message: 'Logout successful' });
-    });
 });
 
 // USER ROUTES
@@ -170,7 +201,7 @@ app.get('/api/users/profile', requireAuth, async (req, res) => {
 });
 
 // GET /api/users - Get all users (TODO: Admin only)
-app.get('/api/users', requireAuth, async (req, res) => {
+app.get('/api/users', requireAuth, requireAdmin, async (req, res) => {
     try {
         const users = await User.findAll({
             attributes: ['id', 'name', 'email'] // Don't return passwords
@@ -240,7 +271,7 @@ app.get('/api/projects/:id', requireAuth, async (req, res) => {
 });
 
 // POST /api/projects - Create new project (TODO: Manager+ only)
-app.post('/api/projects', requireAuth, async (req, res) => {
+app.post('/api/projects', requireAuth, requireManager, async (req, res) => {
     try {
         const { name, description, status = 'active' } = req.body;
         
@@ -259,7 +290,7 @@ app.post('/api/projects', requireAuth, async (req, res) => {
 });
 
 // PUT /api/projects/:id - Update project (TODO: Manager+ only)
-app.put('/api/projects/:id', requireAuth, async (req, res) => {
+app.put('/api/projects/:id', requireAuth, requireManager, async (req, res) => {
     try {
         const { name, description, status } = req.body;
         
@@ -281,7 +312,7 @@ app.put('/api/projects/:id', requireAuth, async (req, res) => {
 });
 
 // DELETE /api/projects/:id - Delete project (TODO: Admin only)
-app.delete('/api/projects/:id', requireAuth, async (req, res) => {
+app.delete('/api/projects/:id', requireAuth, requireAdmin, async (req, res) => {
     try {
         const deletedRowsCount = await Project.destroy({
             where: { id: req.params.id }
@@ -321,8 +352,8 @@ app.get('/api/projects/:id/tasks', requireAuth, async (req, res) => {
     }
 });
 
-// POST /api/projects/:id/tasks - Create task (TODO: Manager+ only)
-app.post('/api/projects/:id/tasks', requireAuth, async (req, res) => {
+// POST /api/projects/:id/tasks - Create task 
+app.post('/api/projects/:id/tasks', requireAuth, requireManager, async (req, res) => {
     try {
         const { title, description, assignedUserId, priority = 'medium' } = req.body;
         
@@ -365,7 +396,7 @@ app.put('/api/tasks/:id', requireAuth, async (req, res) => {
 });
 
 // DELETE /api/tasks/:id - Delete task (TODO: Manager+ only)
-app.delete('/api/tasks/:id', requireAuth, async (req, res) => {
+app.delete('/api/tasks/:id', requireAuth, requireManager, async (req, res) => {
     try {
         const deletedRowsCount = await Task.destroy({
             where: { id: req.params.id }
